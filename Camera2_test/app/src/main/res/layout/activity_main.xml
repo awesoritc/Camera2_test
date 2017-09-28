@@ -7,11 +7,9 @@
     android:orientation="vertical"
     tools:context="com.cashierapp.camera2_test.MainActivity">
 
-    <TextureView
-    android:id="@+id/camera2_texture"
-    android:layout_width="wrap_content"
-    android:layout_height="wrap_content"
-    android:layout_gravity="center"
-    android:visibility="visible" />
+    <com.cashierapp.camera2_test.AutoFitTextureView
+        android:id="@+id/texture"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content" />
 
 </LinearLayout>
