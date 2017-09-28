@@ -7,8 +7,15 @@
     android:orientation="vertical"
     tools:context="com.cashierapp.camera2_test.MainActivity">
 
-    <com.cashierapp.camera2_test.AutoFitTextureView
+    <!--<com.cashierapp.camera2_test.AutoFitTextureView
         android:id="@+id/texture"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content" />-->
+
+
+
+    <SurfaceView
+        android:id="@+id/surface"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content" />
 
