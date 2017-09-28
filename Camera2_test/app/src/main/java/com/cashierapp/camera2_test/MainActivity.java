@@ -3,6 +3,8 @@ package com.cashierapp.camera2_test;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.ImageFormat;
 import android.graphics.Matrix;
 import android.graphics.Point;
@@ -30,54 +32,112 @@ import android.util.Log;
 import android.view.Surface;
 import android.view.SurfaceView;
 import android.view.TextureView;
+import android.widget.ImageView;
+import android.widget.Toast;
 
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements TextureView.SurfaceTextureListener {
     final String TAG = "MainActivity";
-/*
-    //TextureView mTextureView;
-    String cameraId;
-    //AutoFitTextureView mTextureView;
-    ImageReader mImageReader;
+
+    TextureView mTextureView;
+
+    CameraManager mCameraManager;
     CameraDevice mCameraDevice;
-    CameraCaptureSession mCaptureSession;
+    ImageReader mImageReader;
+    CameraCaptureSession mCameraCaptureSession;
+    CaptureRequest.Builder mPreviewRequestBuilder;
     Surface mPreviewSurface;
 
-    ImageReader.OnImageAvailableListener mTakePictureAvailableListener = new ImageReader.OnImageAvailableListener() {
-        @Override
-        public void onImageAvailable(ImageReader imageReader) {
+    int captureFlag = 1;
 
-            //Surfaceから画像が利用できるようになった時に呼び出される
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
 
+        mTextureView = (TextureView) findViewById(R.id.textureView);
+
+        mTextureView.setSurfaceTextureListener(this);
+
+        if(mTextureView.isAvailable()){
+            openCamera(2560, 1920);
+            Log.d(TAG, "available");
         }
-    };
+        Log.d(TAG, "not available");
+    }
 
-    CameraDevice.StateCallback mStateCallback = new CameraDevice.StateCallback() {
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+
+        mCameraCaptureSession.close();
+        mCameraDevice.close();
+        mImageReader.close();
+    }
+
+    private void openCamera(int width, int height){
+
+        //カメラ取得
+        mCameraManager = (CameraManager) getSystemService(CAMERA_SERVICE);
+
+        //カメラidのリストを取得
+        ArrayList<String> backIds = new ArrayList<>();
+        try{
+            String[] idList = mCameraManager.getCameraIdList();
+            int i = 0;
+            for(String id : idList){
+                CameraCharacteristics cameraCharacteristics = mCameraManager.getCameraCharacteristics(id);
+                Integer lensFacing = cameraCharacteristics.get(CameraCharacteristics.LENS_FACING);
+                if(lensFacing != null && lensFacing == CameraCharacteristics.LENS_FACING_BACK){
+                    backIds.add(id);
+                }
+                Log.d(TAG, String.valueOf(i));
+                i++;
+            }
+        } catch (CameraAccessException e) {
+            e.printStackTrace();
+        }
+
+        Log.d(TAG, String.valueOf(backIds.size()));
+        
+
+        try{
+            mCameraManager.openCamera(backIds.get(0), stateCallback, null);
+        } catch (CameraAccessException e) {
+            e.printStackTrace();
+        }catch (SecurityException e) {
+            e.printStackTrace();
+        }
+
+        mImageReader = ImageReader.newInstance(1920, 1080, ImageFormat.JPEG, 1);
+        mImageReader.setOnImageAvailableListener(onImageAvailableListener, null);
+    }
+
+
+    CameraDevice.StateCallback stateCallback = new CameraDevice.StateCallback() {
         @Override
         public void onOpened(@NonNull CameraDevice cameraDevice) {
 
-            //SurfaceTextureにプレビューサイズを設定し、プレビュー用のSurfaceを生成する。
+            Log.d(TAG, "camera opened");
+
             SurfaceTexture texture = mTextureView.getSurfaceTexture();
             texture.setDefaultBufferSize(1280, 720);
             mPreviewSurface = new Surface(texture);
 
-
             try {
-
-                //CaptureSessionを生成する
-                cameraDevice.createCaptureSession(Arrays.asList(mPreviewSurface, mImageReader.getSurface()), mSessionCallback, null);
-
-
+                cameraDevice.createCaptureSession(Arrays.asList(mPreviewSurface, mImageReader.getSurface()), sessionStateCallback, null);
+                Log.d(TAG, "onOpened stateCallback");
             } catch (CameraAccessException e) {
                 e.printStackTrace();
+                Log.d(TAG, "onOpened fail stateCallback");
             }
-
-            //パラメーターのcameraDeviceを保持しておく
             mCameraDevice = cameraDevice;
 
         }
@@ -94,27 +154,77 @@ public class MainActivity extends AppCompatActivity {
     };
 
 
-    CameraCaptureSession.StateCallback mSessionCallback = new CameraCaptureSession.StateCallback() {
+
+    ImageReader.OnImageAvailableListener onImageAvailableListener = new ImageReader.OnImageAvailableListener() {
         @Override
-        public void onConfigured(@NonNull CameraCaptureSession cameraCaptureSession) {
+        public void onImageAvailable(ImageReader imageReader) {
 
-        }
+            Log.d(TAG, "onImageAvailable");
+            Image image = imageReader.acquireLatestImage();
 
-        @Override
-        public void onConfigureFailed(@NonNull CameraCaptureSession cameraCaptureSession) {
+            Log.d(TAG, "image acquired");
 
-            //パラメーターのCameraCaptureSessionを保持しておきます
-            mCaptureSession = cameraCaptureSession;
+            ByteBuffer buffer = image.getPlanes()[0].getBuffer();
+            byte[] bytes = new byte[buffer.capacity()];
+            buffer.get(bytes);
+            Bitmap bitmapImage = BitmapFactory.decodeByteArray(bytes, 0, bytes.length, null);
+
+            ImageView imageView = (ImageView) findViewById(R.id.image);
+            imageView.setImageBitmap(bitmapImage);
+
+            Log.d(TAG, "image acquired");
+
+            if(captureFlag == 0){
+                Handler handler = new Handler();
+                handler.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        captureFlag = 1;
+                    }
+                }, 1000);
+            }
+
+            image.close();
         }
     };
 
 
+
+    CameraCaptureSession.StateCallback sessionStateCallback = new CameraCaptureSession.StateCallback() {
+        @Override
+        public void onConfigured(@NonNull CameraCaptureSession cameraCaptureSession) {
+            Log.d(TAG, "onConfigured");
+
+            mCameraCaptureSession = cameraCaptureSession;
+
+            //プレビューの準備
+            try{
+                mPreviewRequestBuilder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
+                //オートフォーカスの追加
+                mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+                mPreviewRequestBuilder.addTarget(mPreviewSurface);
+                mCameraCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(), mCaptureCallback, null);
+                Log.d(TAG, "preview available");
+
+            } catch (CameraAccessException e) {
+                e.printStackTrace();
+            }
+        }
+
+        @Override
+        public void onConfigureFailed(@NonNull CameraCaptureSession cameraCaptureSession) {
+            Log.d(TAG, "onConfigureFailed");
+        }
+    };
+
+    
+    
     CameraCaptureSession.CaptureCallback mCaptureCallback = new CameraCaptureSession.CaptureCallback() {
         @Override
         public void onCaptureStarted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, long timestamp, long frameNumber) {
             super.onCaptureStarted(session, request, timestamp, frameNumber);
-
-            //撮影開始のタイミングで呼ばれる
+            
+            
         }
 
         @Override
@@ -126,289 +236,91 @@ public class MainActivity extends AppCompatActivity {
         public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
             super.onCaptureCompleted(session, request, result);
 
-            //撮影完了のタイミングで呼ばれる
-        }
-    };
+            Log.d(TAG, "onCaptureCompleted");
 
-
-*/
-
-
-    private CameraDevice backCameraDevice;
-    private CameraCaptureSession backCameraSession;
-    private CaptureRequest.Builder mPreviewRequestBuilder;
-
-
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
-/*
-
-        //準備
-        //カメラのオープン
-
-        mTextureView = (AutoFitTextureView) findViewById(R.id.texture);
-
-
-        //CameraManagerのインスタンスを取得
-        CameraManager cameraManager = (CameraManager) getSystemService(CAMERA_SERVICE);
-
-        //オープンするカメラのIDを決める
-        cameraId = getBackCameraIds(cameraManager).get(0);
-
-        //ImageReaderを生成
-        mImageReader = ImageReader.newInstance(1920, 1080, ImageFormat.JPEG, 3);
-        mImageReader.setOnImageAvailableListener(mTakePictureAvailableListener, null);
-
-        //CameraManagerにopen要求を出す
-        try {
-            cameraManager.openCamera(cameraId, mStateCallback, null);
-        } catch (CameraAccessException e) {
-            e.printStackTrace();
-        } catch (SecurityException e){
-            e.printStackTrace();
-        }
-
-
-*/
-
-
-        CameraManager manager = (CameraManager) getSystemService(CAMERA_SERVICE);
-
-        try {
-
-            String backCameraId ="";
-            for (String cameraId : manager.getCameraIdList()) {
-                CameraCharacteristics chars = manager.getCameraCharacteristics(cameraId);
-                Integer facing = chars.get(CameraCharacteristics.LENS_FACING);
-
-                if (facing != null && facing == CameraCharacteristics.LENS_FACING_BACK) {
-                    backCameraId = cameraId;
-                }
-            }
-
-            SurfaceView surfaceView = (SurfaceView) findViewById(R.id.surface);
-            surfaceView.getHolder().setFixedSize(640, 320);
-
-            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-                // TODO: Consider calling
-                //    ActivityCompat#requestPermissions
-                // here to request the missing permissions, and then overriding
-                //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-                //                                          int[] grantResults)
-                // to handle the case where the user grants the permission. See the documentation
-                // for ActivityCompat#requestPermissions for more details.
-                return;
-            }
-            manager.openCamera(backCameraId, openCallback, null);
-        } catch (CameraAccessException e) {
-            e.printStackTrace();
-        }
-    }
-
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-/*
-
-        //プレビューの開始
-        try {
-
-            //プレビュー用のCaptureRequsest.Builderを生成します
-            CaptureRequest.Builder captureBuilder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-
-            //CaptureRequest.Builder用にプレビュー用のSurfaceを設定します
-            captureBuilder.addTarget(mPreviewSurface);
-
-            //必要なパラメーターを設定します(サンプル)
-            captureBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
-
-            //プレビューを開始します
-            mCaptureSession.setRepeatingRequest(captureBuilder.build(), null, null);
-
-        } catch (CameraAccessException e) {
-            e.printStackTrace();
-        }
-
-
-
-        //撮影
-        try{
-
-            //撮影用のCaptureRequsest.Builderを生成します
-            CaptureRequest.Builder captureBuilder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-
-            //CaptureRequest.Builder用に撮影用のSurfaceを設定します
-            captureBuilder.addTarget(mPreviewSurface);
-
-            //必要なパラメーターを設定します(サンプル)
-            captureBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
-            captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, 90);
-            captureBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
-
-            //プレビューを開始します
-            mCaptureSession.stopRepeating();
-
-            //撮影を開始します
-            final CaptureRequest.Builder cap = captureBuilder;
-            Handler handler = new Handler();
-            handler.postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    //撮影を開始します
-                    try {
-                        mCaptureSession.capture(cap.build(), mCaptureCallback, null);
-                    } catch (CameraAccessException e) {
-                        e.printStackTrace();
-                    }
-                }
-            }, 5000);
-
-            //撮影を開始します
-            //mCaptureSession.capture(captureBuilder.build(), mCaptureCallback, null);
-
-        } catch (CameraAccessException e) {
-            e.printStackTrace();
-        }
-*/
-
-
-    }
-
-
-    @Override
-    protected void onPause() {
-        super.onPause();
-/*
-        mCaptureSession.close();
-        mCameraDevice.close();
-        mImageReader.close();
-
-*/
-
-        //カメラセッションの終了
-        if(backCameraSession != null){
             try{
-                backCameraSession.stopRepeating();
+                //ここで撮影を行う
+                if(captureFlag == 1){
+                    CaptureRequest.Builder capture = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
+                    capture.addTarget(mImageReader.getSurface());
+                    capture.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+                    capture.set(CaptureRequest.JPEG_ORIENTATION, 90);
+                    capture.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
+                    mCameraCaptureSession.stopRepeating();
+                    mCameraCaptureSession.capture(capture.build(), finalCaptureCallback, null);
+                    captureFlag = 0;
+                }
+                Log.d(TAG, "captured");
             } catch (CameraAccessException e) {
                 e.printStackTrace();
             }
-            backCameraSession.close();
-        }
-
-        //カメラデバイスとの切断
-        if(backCameraDevice != null){
-            backCameraDevice.close();
-        }
-    }
-
-
-    public List<String> getBackCameraIds(CameraManager cameraManager){
-
-        ArrayList<String> backIds = new ArrayList<>();
-
-        try{
-            String[] idList = cameraManager.getCameraIdList();
-            for(String id : idList){
-                CameraCharacteristics characteristics = cameraManager.getCameraCharacteristics(id);
-                Integer lensFacing = characteristics.get(CameraCharacteristics.LENS_FACING);
-                if(lensFacing != null && lensFacing == CameraCharacteristics.LENS_FACING_BACK){
-                    //背面カメラならListに追加
-                    backIds.add(id);
-                }
-            }
-        } catch (CameraAccessException e) {
-            e.printStackTrace();
-        }
-        return backIds;
-    }
-
-
-
-    CameraDevice.StateCallback openCallback = new CameraDevice.StateCallback() {
-        @Override
-        public void onOpened(@NonNull CameraDevice cameraDevice) {
-            backCameraDevice = cameraDevice;
-
-            //プレビュー用のSurfaceViewをリストに登録
-            SurfaceView surfaceView = (SurfaceView) findViewById(R.id.surface);
-            ArrayList<Surface> surfaceList = new ArrayList<>();
-            surfaceList.add(surfaceView.getHolder().getSurface());
-
-            try{
-                //プレビューリクエストの設定(SurfaceViewをターゲットに)
-                mPreviewRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-                mPreviewRequestBuilder.addTarget(surfaceView.getHolder().getSurface());
-
-                //キャプチャーセッションの開始
-                cameraDevice.createCaptureSession(surfaceList, captureSessionStateCallback, null );
-            } catch (CameraAccessException e) {
-                e.printStackTrace();
-            }
-        }
-
-        @Override
-        public void onDisconnected(@NonNull CameraDevice cameraDevice) {
-
-        }
-
-        @Override
-        public void onError(@NonNull CameraDevice cameraDevice, int i) {
-
-        }
-    };
-
-
-    CameraCaptureSession.StateCallback captureSessionStateCallback = new CameraCaptureSession.StateCallback() {
-        @Override
-        public void onConfigured(@NonNull CameraCaptureSession cameraCaptureSession) {
-
-            backCameraSession = cameraCaptureSession;
-
-            try{
-                //オートフォーカスの設定
-                mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_START);
-
-                //プレビューの開始
-                backCameraSession.setRepeatingRequest(mPreviewRequestBuilder.build(), captureCallback, null);
-            } catch (CameraAccessException e) {
-                e.printStackTrace();
-            }
-
-        }
-
-        @Override
-        public void onConfigureFailed(@NonNull CameraCaptureSession cameraCaptureSession) {
-
-        }
-    };
-
-
-    CameraCaptureSession.CaptureCallback captureCallback = new CameraCaptureSession.CaptureCallback() {
-        @Override
-        public void onCaptureStarted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, long timestamp, long frameNumber) {
-            super.onCaptureStarted(session, request, timestamp, frameNumber);
-        }
-
-        @Override
-        public void onCaptureProgressed(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull CaptureResult partialResult) {
-            super.onCaptureProgressed(session, request, partialResult);
-        }
-
-        @Override
-        public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
-            super.onCaptureCompleted(session, request, result);
         }
 
         @Override
         public void onCaptureFailed(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull CaptureFailure failure) {
             super.onCaptureFailed(session, request, failure);
-
-            Log.d(TAG, "onCaptureFailed: ");
         }
     };
+    
+
+
+    CameraCaptureSession.CaptureCallback finalCaptureCallback = new CameraCaptureSession.CaptureCallback() {
+        @Override
+        public void onCaptureStarted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, long timestamp, long frameNumber) {
+            super.onCaptureStarted(session, request, timestamp, frameNumber);
+        }
+
+        @Override
+        public void onCaptureProgressed(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull CaptureResult partialResult) {
+            super.onCaptureProgressed(session, request, partialResult);
+        }
+
+        @Override
+        public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
+            super.onCaptureCompleted(session, request, result);
+
+            try {
+                mCameraCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(), mCaptureCallback, null);
+            } catch (CameraAccessException e) {
+                e.printStackTrace();
+            }
+        }
+
+        @Override
+        public void onCaptureFailed(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull CaptureFailure failure) {
+            super.onCaptureFailed(session, request, failure);
+        }
+    };
+
+
+
+
+
+
+
+    @Override
+    public void onSurfaceTextureAvailable(SurfaceTexture surfaceTexture, int i, int i1) {
+
+        Log.d(TAG, "onSurfaceTextureAvailable: ");
+
+        openCamera(2560, 1920);
+        Log.d(TAG, "available");
+    }
+
+    @Override
+    public void onSurfaceTextureSizeChanged(SurfaceTexture surfaceTexture, int i, int i1) {
+
+    }
+
+    @Override
+    public boolean onSurfaceTextureDestroyed(SurfaceTexture surfaceTexture) {
+        return false;
+    }
+
+    @Override
+    public void onSurfaceTextureUpdated(SurfaceTexture surfaceTexture) {
+
+    }
 }
 
 
