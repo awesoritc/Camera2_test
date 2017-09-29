@@ -116,7 +116,7 @@ public class MainActivity extends AppCompatActivity implements TextureView.Surfa
             e.printStackTrace();
         }
 
-        mImageReader = ImageReader.newInstance(1920, 1080, ImageFormat.JPEG, 1);
+        mImageReader = ImageReader.newInstance(2560, 1920, ImageFormat.JPEG, 1);
         mImageReader.setOnImageAvailableListener(onImageAvailableListener, null);
     }
 
@@ -128,7 +128,7 @@ public class MainActivity extends AppCompatActivity implements TextureView.Surfa
             Log.d(TAG, "camera opened");
 
             SurfaceTexture texture = mTextureView.getSurfaceTexture();
-            texture.setDefaultBufferSize(1280, 720);
+            texture.setDefaultBufferSize(2560, 1920);
             mPreviewSurface = new Surface(texture);
 
             try {
